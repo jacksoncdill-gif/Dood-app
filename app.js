@@ -715,7 +715,7 @@ if ('serviceWorker' in navigator) {
     currentReplayPost = posts.filter(function(p){ return p.id===id; })[0];
     if(!currentReplayPost) return;
     replayCanvas.width = currentReplayPost.canvasWidth || 600;
-    replayCanvas.height = currentReplayPost.canvasHeight || 600;
+    replayCanvas.height = currentReplayPost.canvasHeight || 338;
     replayTag.textContent = currentReplayPost.deviceLabel;
     replayModal.classList.add('open');
     if(currentReplayPost.type==='animate'){
@@ -858,18 +858,18 @@ if ('serviceWorker' in navigator) {
   /* ---------- seed example post on first run ---------- */
   function buildSeedPost(){
     var pts1 = [], pts2 = [], pts3 = [], pts4=[];
-    var cx=300, cy=300, r=140, t=0;
+    var cx=300, cy=169, r=110, t=0;
     for(var a=0;a<=360;a+=8){
       var rad = a*Math.PI/180;
       pts1.push({x:cx+Math.cos(rad)*r, y:cy+Math.sin(rad)*r, t:t}); t+=12;
     }
-    pts2.push({x:cx-55,y:cy-30,t:t}); t+=40; pts2.push({x:cx-55,y:cy-10,t:t});
+    pts2.push({x:cx-42,y:cy-25,t:t}); t+=40; pts2.push({x:cx-42,y:cy-8,t:t});
     t+=200;
-    pts3.push({x:cx+55,y:cy-30,t:t}); t+=40; pts3.push({x:cx+55,y:cy-10,t:t});
+    pts3.push({x:cx+42,y:cy-25,t:t}); t+=40; pts3.push({x:cx+42,y:cy-8,t:t});
     t+=200;
     for(var a2=200;a2<=340;a2+=6){
       var rad2=a2*Math.PI/180;
-      pts4.push({x:cx+Math.cos(rad2)*60, y:cy+40+Math.sin(rad2)*60, t:t}); t+=14;
+      pts4.push({x:cx+Math.cos(rad2)*48, y:cy+30+Math.sin(rad2)*48, t:t}); t+=14;
     }
     var seedStrokes = [
       {color:'#222222', width:8, eraser:false, pointerType:'mouse', points:pts1},
@@ -878,7 +878,7 @@ if ('serviceWorker' in navigator) {
       {color:'#D85A30', width:8, eraser:false, pointerType:'mouse', points:pts4}
     ];
     var off = document.createElement('canvas');
-    off.width=600; off.height=600;
+    off.width=600; off.height=338;
     var octx = off.getContext('2d');
     seedStrokes.forEach(function(s){
       for(var i=1;i<s.points.length;i++){
@@ -890,7 +890,7 @@ if ('serviceWorker' in navigator) {
     return {
       id:'seed1', type:'draw', author:'AK', authorName:'ari.k', deviceLabel:'drawn with stylus',
       layers: [{ bgColor: null, strokes: seedStrokes }],
-      canvasWidth: 600, canvasHeight: 600,
+      canvasWidth: 600, canvasHeight: 338,
       thumb: off.toDataURL('image/png'),
       createdAt: new Date(Date.now()-3600*1000*3).toISOString(), likes: 12
     };
