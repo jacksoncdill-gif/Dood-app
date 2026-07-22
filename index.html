@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Dood — draw it live</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#D85A30">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Dood">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <span class="dots"><span></span><span></span></span>
+      Dood
+    </div>
+    <nav>
+      <button id="tabFeed" class="active">Feed</button>
+      <button id="tabDraw">+ Draw</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="feedView" class="view active">
+      <div id="feedList"></div>
+    </section>
+
+    <section id="drawView" class="view">
+      <div class="canvas-shell">
+        <canvas id="drawCanvas" width="600" height="600"></canvas>
+      </div>
+      <div class="toolbar">
+        <div class="row">
+          <div class="swatches" id="swatches"></div>
+          <div class="spacer"></div>
+          <button class="icon-btn" id="eraserBtn" title="Eraser">◌</button>
+          <button class="icon-btn" id="undoBtn" title="Undo">↺</button>
+          <button class="icon-btn" id="clearBtn" title="Clear">✕</button>
+        </div>
+        <div class="row">
+          <span style="font-size:12px;color:var(--muted);">brush</span>
+          <input type="range" class="size-slider" id="sizeSlider" min="2" max="26" value="6">
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="backBtn">Cancel</button>
+          <div class="spacer"></div>
+          <button class="btn primary" id="postBtn">Post</button>
+        </div>
+      </div>
+      <p class="hint">Draw with your finger, stylus, or mouse — every post is tagged with what you used.</p>
+    </section>
+  </main>
+</div>
+
+<div class="modal-bg" id="replayModal">
+  <div class="modal">
+    <div class="modal-top">
+      <strong style="font-size:14px;">Replay</strong>
+      <span class="tag" id="replayTag"></span>
+      <button id="closeReplay">✕</button>
+    </div>
+    <canvas id="replayCanvas" width="600" height="600"></canvas>
+    <div class="modal-controls">
+      <button class="btn ghost" id="replayAgain">Replay again</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

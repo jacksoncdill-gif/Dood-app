@@ -1,0 +1,15 @@
+{
+  "name": "Dood",
+  "short_name": "Dood",
+  "description": "Draw or animate something right now, live in the app. Every post is made by a real person in real time.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdfcfa",
+  "theme_color": "#D85A30",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
