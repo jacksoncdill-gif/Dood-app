@@ -199,12 +199,15 @@
           <button class="icon-btn wide" id="previewBtn" title="Preview loop">▶ Preview</button>
         </div>
         <div class="row">
+          <button class="icon-btn wide" id="newFrameModeBtn" title="Choose what a new frame starts as" aria-pressed="false">+ Copy last frame</button>
+        </div>
+        <div class="row">
           <button class="btn ghost" id="backBtnAnim">Cancel</button>
           <div class="spacer"></div>
           <button class="btn primary" id="postBtnAnim">Post</button>
         </div>
       </div>
-      <p class="hint">Each frame starts as a copy of the last one — tweak it a little, add a frame, repeat.</p>
+      <p class="hint" id="animHint">Copy mode: each new frame starts as the last one — tweak it a little, add a frame, repeat.</p>
     </section>
   </main>
 </div>

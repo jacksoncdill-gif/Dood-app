@@ -401,6 +401,8 @@ if ('serviceWorker' in navigator) {
   var deleteFrameBtn = document.getElementById('deleteFrameBtn');
   var onionToggleBtn = document.getElementById('onionToggleBtn');
   var previewBtn = document.getElementById('previewBtn');
+  var newFrameModeBtn = document.getElementById('newFrameModeBtn');
+  var animHintEl = document.getElementById('animHint');
   var postBtnAnim = document.getElementById('postBtnAnim');
   var backBtnAnim = document.getElementById('backBtnAnim');
   var frameStripEl = document.getElementById('frameStrip');
@@ -412,6 +414,7 @@ if ('serviceWorker' in navigator) {
   var onionEnabled = true;
   var previewPlaying = false;
   var previewTimer = null;
+  var newFrameMode = 'copy'; // 'copy' = duplicate last frame, 'blank' = start empty and trace the onion-skin ghost
 
   function makeFrame(copyStrokesFrom){
     var off = document.createElement('canvas');
@@ -547,6 +550,24 @@ if ('serviceWorker' in navigator) {
   });
   onionToggleBtn.classList.add('active');
 
+  newFrameModeBtn.addEventListener('click', function(){
+    newFrameMode = newFrameMode === 'copy' ? 'blank' : 'copy';
+    var isBlank = newFrameMode === 'blank';
+    newFrameModeBtn.classList.toggle('active', isBlank);
+    newFrameModeBtn.setAttribute('aria-pressed', isBlank ? 'true' : 'false');
+    newFrameModeBtn.textContent = isBlank ? '+ Blank (trace onion skin)' : '+ Copy last frame';
+    if(animHintEl){
+      animHintEl.textContent = isBlank
+        ? 'Trace mode: each new frame starts blank — the faded onion skin behind it is your last frame to draw over.'
+        : 'Copy mode: each new frame starts as the last one — tweak it a little, add a frame, repeat.';
+    }
+    if(isBlank && !onionEnabled){
+      onionEnabled = true;
+      onionToggleBtn.classList.add('active');
+      composeAnimCanvas();
+    }
+  });
+
   function renderFrameStrip(){
     frameStripEl.innerHTML = '';
     frames.forEach(function(frame, i){
@@ -574,7 +595,7 @@ if ('serviceWorker' in navigator) {
     addBtn.disabled = frames.length >= MAX_FRAMES;
     addBtn.addEventListener('click', function(){
       if(frames.length >= MAX_FRAMES) return;
-      var newFrame = makeFrame(activeFrame().strokes);
+      var newFrame = newFrameMode === 'blank' ? makeFrame() : makeFrame(activeFrame().strokes);
       frames.splice(activeFrameIndex+1, 0, newFrame);
       activeFrameIndex++;
       composeAnimCanvas();
