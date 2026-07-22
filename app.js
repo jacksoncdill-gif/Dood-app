@@ -7,10 +7,45 @@ if ('serviceWorker' in navigator) {
 }
 
 (function(){
-  var COLORS = ["#222222","#D85A30","#1D9E75","#378ADD","#7F77DD","#EF9F27"];
+  var COLORS = ["#1C1A17","#E8543E","#4FBE8E","#2C5FC4","#B7A6E0","#F0AC2B"];
+  var COLOR_NAMES = ["Ink black","Tomato red","Mint green","Cobalt blue","Lavender purple","Mustard yellow"];
   var MAX_LAYERS = 5;
   var MAX_FRAMES = 12;
   var ANIM_FRAME_MS = 130; // ~7.7fps for preview / feed loop / replay pacing
+
+  /* ---- mascot (Draw workspace only, Stage 1) ---- */
+  var mascotEl = document.getElementById('mascot');
+  var mascotTimer = null;
+  function setMascot(state){
+    if(!mascotEl) return;
+    mascotEl.setAttribute('data-state', state);
+    mascotEl.classList.remove('pop');
+    void mascotEl.offsetWidth; // restart animation
+    mascotEl.classList.add('pop');
+    if(mascotTimer) clearTimeout(mascotTimer);
+    if(state !== 'idle'){
+      mascotTimer = setTimeout(function(){ mascotEl.setAttribute('data-state','idle'); }, 1200);
+    }
+  }
+
+  /* ---- tool caption + brush/eraser toggle (Draw workspace only) ---- */
+  var toolCaptionEl = document.getElementById('toolCaption');
+  var brushBtn = document.getElementById('brushBtn');
+  function setToolCaption(text){ if(toolCaptionEl) toolCaptionEl.textContent = text; }
+  function setBrushActive(){
+    if(!brushBtn) return;
+    brushBtn.classList.add('active'); brushBtn.setAttribute('aria-pressed','true');
+    document.getElementById('eraserBtn').classList.remove('active');
+    document.getElementById('eraserBtn').setAttribute('aria-pressed','false');
+    setToolCaption('Brush — for most drawing');
+  }
+  function setEraserActive(){
+    if(!brushBtn) return;
+    brushBtn.classList.remove('active'); brushBtn.setAttribute('aria-pressed','false');
+    document.getElementById('eraserBtn').classList.add('active');
+    document.getElementById('eraserBtn').setAttribute('aria-pressed','true');
+    setToolCaption('Eraser — rubs out strokes on this layer');
+  }
 
   /* ================= shared low-level drawing helpers ================= */
 
@@ -184,24 +219,33 @@ if ('serviceWorker' in navigator) {
     var b = document.createElement('button');
     b.className = 'swatch' + (i===0?' selected':'');
     b.style.background = c;
+    b.setAttribute('aria-label', COLOR_NAMES[i] || c);
     b.addEventListener('click', function(){
       currentColor = c; isEraser = false;
-      eraserBtn.classList.remove('active');
+      setBrushActive();
       clearSwatchSelection(swatchesEl);
       b.classList.add('selected');
+      setMascot('happy');
     });
     swatchesEl.appendChild(b);
   });
   colorWheel.addEventListener('input', function(){
     currentColor = colorWheel.value;
     isEraser = false;
-    eraserBtn.classList.remove('active');
+    setBrushActive();
     clearSwatchSelection(swatchesEl);
+    setMascot('happy');
   });
 
+  if(brushBtn){
+    brushBtn.addEventListener('click', function(){
+      isEraser = false;
+      setBrushActive();
+    });
+  }
   eraserBtn.addEventListener('click', function(){
-    isEraser = !isEraser;
-    eraserBtn.classList.toggle('active', isEraser);
+    isEraser = true;
+    setEraserActive();
   });
   undoBtn.addEventListener('click', function(){
     var layer = activeLayer();
@@ -214,10 +258,12 @@ if ('serviceWorker' in navigator) {
     layer.strokes = [];
     renderLayer(layer);
     compositeAll();
+    setMascot('alarmed');
   });
 
   layersToggleBtn.addEventListener('click', function(){
-    layersPanel.classList.toggle('open');
+    var isOpen = layersPanel.classList.toggle('open');
+    layersToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   });
 
   function renderLayersPanel(){
@@ -232,6 +278,7 @@ if ('serviceWorker' in navigator) {
         eyeBtn.className = 'eye' + (layer.visible ? '' : ' off');
         eyeBtn.textContent = layer.visible ? '◉' : '○';
         eyeBtn.title = 'Toggle visibility';
+        eyeBtn.setAttribute('aria-label', (layer.visible ? 'Hide' : 'Show') + ' ' + layer.name);
         eyeBtn.addEventListener('click', function(ev){
           ev.stopPropagation();
           layer.visible = !layer.visible;
@@ -242,6 +289,7 @@ if ('serviceWorker' in navigator) {
         var bgSwatch = document.createElement('label');
         bgSwatch.className = 'bgswatch';
         bgSwatch.title = 'Set background color for this layer';
+        bgSwatch.setAttribute('aria-label', 'Set background color for ' + layer.name);
         bgSwatch.style.background = layer.bgColor ||
           'linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%)';
         if(layer.bgColor){ bgSwatch.style.backgroundSize = 'auto'; }
@@ -264,6 +312,7 @@ if ('serviceWorker' in navigator) {
         var upBtn = document.createElement('button');
         upBtn.textContent = '↑';
         upBtn.title = 'Move up';
+        upBtn.setAttribute('aria-label', 'Move ' + layer.name + ' up');
         upBtn.disabled = i === layers.length-1;
         upBtn.addEventListener('click', function(ev){
           ev.stopPropagation();
@@ -278,6 +327,7 @@ if ('serviceWorker' in navigator) {
         var downBtn = document.createElement('button');
         downBtn.textContent = '↓';
         downBtn.title = 'Move down';
+        downBtn.setAttribute('aria-label', 'Move ' + layer.name + ' down');
         downBtn.disabled = i === 0;
         downBtn.addEventListener('click', function(ev){
           ev.stopPropagation();
@@ -292,6 +342,7 @@ if ('serviceWorker' in navigator) {
         var delBtn = document.createElement('button');
         delBtn.textContent = '✕';
         delBtn.title = 'Delete layer';
+        delBtn.setAttribute('aria-label', 'Delete ' + layer.name);
         delBtn.disabled = layers.length <= 1;
         delBtn.addEventListener('click', function(ev){
           ev.stopPropagation();
@@ -627,7 +678,7 @@ if ('serviceWorker' in navigator) {
 
   postBtn.addEventListener('click', function(){
     var hasAnyStroke = layers.some(function(l){ return l.strokes.length>0; });
-    if(!hasAnyStroke){ return; }
+    if(!hasAnyStroke){ setMascot('confused'); return; }
     var majority = {};
     layers.forEach(function(l){
       l.strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
