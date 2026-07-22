@@ -1,4 +1,4 @@
-var CACHE_NAME = 'dood-cache-v1';
+var CACHE_NAME = 'dood-cache-v2';
 var ASSETS = [
   './',
   './index.html',
@@ -25,10 +25,18 @@ self.addEventListener('activate', function(event){
   self.clients.claim();
 });
 
+// Network-first: while this app is actively being developed, always prefer the
+// latest version from the server. Only fall back to the cached copy if the
+// network is unavailable (e.g. offline), which is the scenario this cache
+// actually exists for.
 self.addEventListener('fetch', function(event){
   event.respondWith(
-    caches.match(event.request).then(function(cached){
-      return cached || fetch(event.request);
+    fetch(event.request).then(function(response){
+      var copy = response.clone();
+      caches.open(CACHE_NAME).then(function(cache){ cache.put(event.request, copy); });
+      return response;
+    }).catch(function(){
+      return caches.match(event.request);
     })
   );
 });
