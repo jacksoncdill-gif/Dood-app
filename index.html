@@ -41,15 +41,27 @@
       <div class="toolbar">
         <div class="row">
           <div class="swatches" id="swatches"></div>
+          <label class="color-wheel-wrap" title="Full color picker">
+            <input type="color" id="colorWheel" value="#222222">
+          </label>
           <div class="spacer"></div>
           <button class="icon-btn" id="eraserBtn" title="Eraser">◌</button>
           <button class="icon-btn" id="undoBtn" title="Undo">↺</button>
-          <button class="icon-btn" id="clearBtn" title="Clear">✕</button>
+          <button class="icon-btn" id="clearBtn" title="Clear layer">✕</button>
         </div>
         <div class="row">
           <span style="font-size:12px;color:var(--muted);">brush</span>
           <input type="range" class="size-slider" id="sizeSlider" min="2" max="26" value="6">
         </div>
+        <div class="row">
+          <button class="icon-btn wide" id="layersToggleBtn" title="Layers">▤ Layers</button>
+        </div>
+
+        <div class="layers-panel" id="layersPanel">
+          <div class="layers-list" id="layersList"></div>
+          <button class="btn ghost small" id="addLayerBtn">+ Add layer</button>
+        </div>
+
         <div class="row">
           <button class="btn ghost" id="backBtn">Cancel</button>
           <div class="spacer"></div>

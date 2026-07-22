@@ -8,27 +8,58 @@ if ('serviceWorker' in navigator) {
 
 (function(){
   var COLORS = ["#222222","#D85A30","#1D9E75","#378ADD","#7F77DD","#EF9F27"];
+  var MAX_LAYERS = 5;
+
   var canvas = document.getElementById('drawCanvas');
   var ctx = canvas.getContext('2d');
   var swatchesEl = document.getElementById('swatches');
+  var colorWheel = document.getElementById('colorWheel');
   var sizeSlider = document.getElementById('sizeSlider');
   var eraserBtn = document.getElementById('eraserBtn');
   var undoBtn = document.getElementById('undoBtn');
   var clearBtn = document.getElementById('clearBtn');
   var postBtn = document.getElementById('postBtn');
   var backBtn = document.getElementById('backBtn');
+  var layersToggleBtn = document.getElementById('layersToggleBtn');
+  var layersPanel = document.getElementById('layersPanel');
+  var layersListEl = document.getElementById('layersList');
+  var addLayerBtn = document.getElementById('addLayerBtn');
 
   var currentColor = COLORS[0];
   var isEraser = false;
-  var strokes = [];
   var activeStroke = null;
   var isDrawing = false;
+  var layerCounter = 0;
+
+  function makeLayer(name){
+    layerCounter++;
+    var off = document.createElement('canvas');
+    off.width = canvas.width; off.height = canvas.height;
+    return {
+      id: 'layer'+layerCounter,
+      name: name || ('Layer ' + layerCounter),
+      visible: true,
+      bgColor: null,
+      strokes: [],
+      canvasEl: off,
+      ctx: off.getContext('2d')
+    };
+  }
+
+  var layers = [ makeLayer('Layer 1') ];
+  var activeLayerIndex = 0;
+
+  function activeLayer(){ return layers[activeLayerIndex]; }
 
   function fitCanvas(){
     var rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * 2;
-    canvas.height = rect.height * 2;
-    redrawAll();
+    var w = rect.width * 2, h = rect.height * 2;
+    canvas.width = w; canvas.height = h;
+    layers.forEach(function(layer){
+      layer.canvasEl.width = w; layer.canvasEl.height = h;
+      renderLayer(layer);
+    });
+    compositeAll();
   }
 
   function toLocal(e){
@@ -38,38 +69,54 @@ if ('serviceWorker' in navigator) {
     return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY, t: performance.now() };
   }
 
-  function drawSeg(ctx, a, b, color, width, eraser){
-    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * (canvas.width/300);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.globalCompositeOperation = 'source-over';
+  function drawSeg(targetCtx, w, a, b, color, width, eraser){
+    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = width * (w/300);
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+    targetCtx.beginPath();
+    targetCtx.moveTo(a.x, a.y);
+    targetCtx.lineTo(b.x, b.y);
+    targetCtx.stroke();
+    targetCtx.globalCompositeOperation = 'source-over';
   }
 
-  function redrawAll(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    strokes.forEach(function(s){
+  function drawDot(targetCtx, w, p, color, width, eraser){
+    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+    targetCtx.fillStyle = color;
+    targetCtx.beginPath();
+    targetCtx.arc(p.x, p.y, (width*(w/300))/2, 0, Math.PI*2);
+    targetCtx.fill();
+    targetCtx.globalCompositeOperation = 'source-over';
+  }
+
+  // Fully rebuilds one layer's own offscreen bitmap from its stroke history + bg fill.
+  function renderLayer(layer){
+    var lctx = layer.ctx, w = layer.canvasEl.width, h = layer.canvasEl.height;
+    lctx.clearRect(0,0,w,h);
+    if(layer.bgColor){
+      lctx.globalCompositeOperation = 'source-over';
+      lctx.fillStyle = layer.bgColor;
+      lctx.fillRect(0,0,w,h);
+    }
+    layer.strokes.forEach(function(s){
       for(var i=1;i<s.points.length;i++){
-        drawSeg(ctx, s.points[i-1], s.points[i], s.color, s.width, s.eraser);
+        drawSeg(lctx, w, s.points[i-1], s.points[i], s.color, s.width, s.eraser);
       }
       if(s.points.length===1){
-        drawDot(ctx, s.points[0], s.color, s.width, s.eraser);
+        drawDot(lctx, w, s.points[0], s.color, s.width, s.eraser);
       }
     });
   }
 
-  function drawDot(ctx, p, color, width, eraser){
-    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, (width*(canvas.width/300))/2, 0, Math.PI*2);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
+  // Cheap: just stacks each layer's already-rendered bitmap onto the main visible canvas.
+  function compositeAll(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    layers.forEach(function(layer){
+      if(!layer.visible) return;
+      ctx.drawImage(layer.canvasEl, 0, 0);
+    });
   }
 
   function pointerTypeLabel(t){
@@ -93,24 +140,32 @@ if ('serviceWorker' in navigator) {
   });
   canvas.addEventListener('pointermove', function(e){
     if(!isDrawing) return;
+    var layer = activeLayer();
     var p = toLocal(e);
     var last = activeStroke.points[activeStroke.points.length-1];
     activeStroke.points.push(p);
-    drawSeg(ctx, last, p, activeStroke.color, activeStroke.width, activeStroke.eraser);
+    drawSeg(layer.ctx, layer.canvasEl.width, last, p, activeStroke.color, activeStroke.width, activeStroke.eraser);
+    compositeAll();
   });
   function endStroke(e){
     if(!isDrawing) return;
     isDrawing = false;
+    var layer = activeLayer();
     if(activeStroke && activeStroke.points.length===1){
-      drawDot(ctx, activeStroke.points[0], activeStroke.color, activeStroke.width, activeStroke.eraser);
+      drawDot(layer.ctx, layer.canvasEl.width, activeStroke.points[0], activeStroke.color, activeStroke.width, activeStroke.eraser);
+      compositeAll();
     }
-    if(activeStroke) strokes.push(activeStroke);
+    if(activeStroke) layer.strokes.push(activeStroke);
     activeStroke = null;
   }
   canvas.addEventListener('pointerup', endStroke);
   canvas.addEventListener('pointercancel', endStroke);
   canvas.addEventListener('pointerleave', function(e){ if(e.buttons===0) endStroke(e); });
 
+  /* ---------- color controls ---------- */
+  function clearSwatchSelection(){
+    Array.prototype.forEach.call(swatchesEl.children, function(el){ el.classList.remove('selected'); });
+  }
   COLORS.forEach(function(c, i){
     var b = document.createElement('button');
     b.className = 'swatch' + (i===0?' selected':'');
@@ -118,10 +173,16 @@ if ('serviceWorker' in navigator) {
     b.addEventListener('click', function(){
       currentColor = c; isEraser = false;
       eraserBtn.classList.remove('active');
-      Array.prototype.forEach.call(swatchesEl.children, function(el){ el.classList.remove('selected'); });
+      clearSwatchSelection();
       b.classList.add('selected');
     });
     swatchesEl.appendChild(b);
+  });
+  colorWheel.addEventListener('input', function(){
+    currentColor = colorWheel.value;
+    isEraser = false;
+    eraserBtn.classList.remove('active');
+    clearSwatchSelection();
   });
 
   eraserBtn.addEventListener('click', function(){
@@ -129,13 +190,140 @@ if ('serviceWorker' in navigator) {
     eraserBtn.classList.toggle('active', isEraser);
   });
   undoBtn.addEventListener('click', function(){
-    strokes.pop();
-    redrawAll();
+    var layer = activeLayer();
+    layer.strokes.pop();
+    renderLayer(layer);
+    compositeAll();
   });
   clearBtn.addEventListener('click', function(){
-    strokes = [];
-    redrawAll();
+    var layer = activeLayer();
+    layer.strokes = [];
+    renderLayer(layer);
+    compositeAll();
   });
+
+  /* ---------- layers panel ---------- */
+  layersToggleBtn.addEventListener('click', function(){
+    layersPanel.classList.toggle('open');
+  });
+
+  function renderLayersPanel(){
+    layersListEl.innerHTML = '';
+    // show topmost layer first in the list (matches visual stacking mental model)
+    for(var i=layers.length-1; i>=0; i--){
+      (function(i){
+        var layer = layers[i];
+        var row = document.createElement('div');
+        row.className = 'layer-row' + (i===activeLayerIndex ? ' active' : '');
+
+        var eyeBtn = document.createElement('button');
+        eyeBtn.className = 'eye' + (layer.visible ? '' : ' off');
+        eyeBtn.textContent = layer.visible ? '◉' : '○';
+        eyeBtn.title = 'Toggle visibility';
+        eyeBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          layer.visible = !layer.visible;
+          compositeAll();
+          renderLayersPanel();
+        });
+
+        var bgSwatch = document.createElement('label');
+        bgSwatch.className = 'bgswatch';
+        bgSwatch.title = 'Set background color for this layer';
+        bgSwatch.style.background = layer.bgColor ||
+          'linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%)';
+        if(layer.bgColor){ bgSwatch.style.backgroundSize = 'auto'; }
+        var bgInput = document.createElement('input');
+        bgInput.type = 'color';
+        bgInput.value = layer.bgColor || '#ffffff';
+        bgInput.addEventListener('click', function(ev){ ev.stopPropagation(); });
+        bgInput.addEventListener('input', function(){
+          layer.bgColor = bgInput.value;
+          renderLayer(layer);
+          compositeAll();
+          renderLayersPanel();
+        });
+        bgSwatch.appendChild(bgInput);
+
+        var nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = layer.name + (layer.bgColor ? ' · bg' : '');
+
+        var upBtn = document.createElement('button');
+        upBtn.textContent = '↑';
+        upBtn.title = 'Move up';
+        upBtn.disabled = i === layers.length-1;
+        upBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(i < layers.length-1){
+            var tmp = layers[i]; layers[i] = layers[i+1]; layers[i+1] = tmp;
+            if(activeLayerIndex===i) activeLayerIndex=i+1;
+            else if(activeLayerIndex===i+1) activeLayerIndex=i;
+            compositeAll(); renderLayersPanel();
+          }
+        });
+
+        var downBtn = document.createElement('button');
+        downBtn.textContent = '↓';
+        downBtn.title = 'Move down';
+        downBtn.disabled = i === 0;
+        downBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(i > 0){
+            var tmp = layers[i]; layers[i] = layers[i-1]; layers[i-1] = tmp;
+            if(activeLayerIndex===i) activeLayerIndex=i-1;
+            else if(activeLayerIndex===i-1) activeLayerIndex=i;
+            compositeAll(); renderLayersPanel();
+          }
+        });
+
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete layer';
+        delBtn.disabled = layers.length <= 1;
+        delBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(layers.length <= 1) return;
+          layers.splice(i,1);
+          if(activeLayerIndex >= layers.length) activeLayerIndex = layers.length-1;
+          compositeAll(); renderLayersPanel();
+        });
+
+        row.appendChild(eyeBtn);
+        row.appendChild(bgSwatch);
+        row.appendChild(nameEl);
+        row.appendChild(upBtn);
+        row.appendChild(downBtn);
+        row.appendChild(delBtn);
+
+        row.addEventListener('click', function(){
+          activeLayerIndex = i;
+          renderLayersPanel();
+        });
+
+        layersListEl.appendChild(row);
+      })(i);
+    }
+    addLayerBtn.disabled = layers.length >= MAX_LAYERS;
+    addLayerBtn.textContent = layers.length >= MAX_LAYERS ? ('Max ' + MAX_LAYERS + ' layers') : '+ Add layer';
+  }
+
+  addLayerBtn.addEventListener('click', function(){
+    if(layers.length >= MAX_LAYERS) return;
+    var newLayer = makeLayer();
+    layers.push(newLayer);
+    activeLayerIndex = layers.length-1;
+    compositeAll();
+    renderLayersPanel();
+  });
+
+  function resetLayersForNewDrawing(){
+    layers = [ makeLayer('Layer 1') ];
+    activeLayerIndex = 0;
+    layers.forEach(function(l){ l.canvasEl.width = canvas.width; l.canvasEl.height = canvas.height; });
+    compositeAll();
+    renderLayersPanel();
+  }
 
   /* ---------- posts / feed ---------- */
   var posts = [];
@@ -185,16 +373,22 @@ if ('serviceWorker' in navigator) {
   }
 
   postBtn.addEventListener('click', function(){
-    if(strokes.length===0){ return; }
+    var hasAnyStroke = layers.some(function(l){ return l.strokes.length>0; });
+    if(!hasAnyStroke){ return; }
     var majority = {};
-    strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
+    layers.forEach(function(l){
+      l.strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
+    });
     var bestType = Object.keys(majority).sort(function(a,b){return majority[b]-majority[a];})[0];
+    var layersSnapshot = layers.filter(function(l){ return l.visible; }).map(function(l){
+      return { bgColor: l.bgColor, strokes: l.strokes };
+    });
     var post = {
       id: 'p'+Date.now(),
       author: 'ME',
       authorName: 'you',
       deviceLabel: pointerTypeLabel(bestType),
-      strokes: strokes,
+      layers: layersSnapshot,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       thumb: canvas.toDataURL('image/png'),
@@ -203,15 +397,13 @@ if ('serviceWorker' in navigator) {
     };
     posts.unshift(post);
     savePosts();
-    strokes = [];
-    redrawAll();
+    resetLayersForNewDrawing();
     renderFeed();
     switchTab('feed');
   });
 
   backBtn.addEventListener('click', function(){
-    strokes = [];
-    redrawAll();
+    resetLayersForNewDrawing();
     switchTab('feed');
   });
 
@@ -241,16 +433,40 @@ if ('serviceWorker' in navigator) {
   function playReplay(){
     clearReplayTimers();
     replayCtx.clearRect(0,0,replayCanvas.width,replayCanvas.height);
+
+    var layersSnap = currentReplayPost.layers ||
+      [{ bgColor: null, strokes: currentReplayPost.strokes || [] }]; // backward-compat for old single-layer posts
+
+    // Prebake every layer's background fill immediately (order = bottom to top).
+    layersSnap.forEach(function(l){
+      if(l.bgColor){
+        replayCtx.globalCompositeOperation = 'source-over';
+        replayCtx.fillStyle = l.bgColor;
+        replayCtx.fillRect(0,0,replayCanvas.width,replayCanvas.height);
+      }
+    });
+
+    // Merge every layer's strokes into one true chronological queue.
+    var allStrokes = [];
+    layersSnap.forEach(function(l){
+      l.strokes.forEach(function(s){ allStrokes.push(s); });
+    });
+    allStrokes.sort(function(a,b){
+      var ta = a.points[0] ? a.points[0].t : 0;
+      var tb = b.points[0] ? b.points[0].t : 0;
+      return ta - tb;
+    });
+
     var elapsed = 0;
-    currentReplayPost.strokes.forEach(function(s, si){
-      elapsed += si===0 ? 0 : 120; // pause between strokes
+    allStrokes.forEach(function(s, si){
+      elapsed += si===0 ? 0 : 60; // small pause between strokes
       for(var i=1;i<s.points.length;i++){
         var a = s.points[i-1], b = s.points[i];
         var delay = Math.min(Math.max(b.t - a.t, 4), 40);
         elapsed += delay;
         (function(a,b,color,width,eraser,when){
           replayTimers.push(setTimeout(function(){
-            drawSegOn(replayCtx, a, b, color, width, eraser);
+            drawSeg(replayCtx, replayCanvas.width, a, b, color, width, eraser);
           }, when));
         })(a,b,s.color,s.width,s.eraser,elapsed);
       }
@@ -258,26 +474,11 @@ if ('serviceWorker' in navigator) {
         elapsed += 30;
         (function(p,color,width,eraser,when){
           replayTimers.push(setTimeout(function(){
-            drawDotOn(replayCtx, p, color, width, eraser);
+            drawDot(replayCtx, replayCanvas.width, p, color, width, eraser);
           }, when));
         })(s.points[0], s.color, s.width, s.eraser, elapsed);
       }
     });
-  }
-
-  function drawSegOn(ctx, a, b, color, width, eraser){
-    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * (replayCanvas.width/300);
-    ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  function drawDotOn(ctx, p, color, width, eraser){
-    ctx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(p.x,p.y,(width*(replayCanvas.width/300))/2,0,Math.PI*2); ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   document.getElementById('closeReplay').addEventListener('click', function(){
@@ -331,7 +532,8 @@ if ('serviceWorker' in navigator) {
     });
     return {
       id:'seed1', author:'AK', authorName:'ari.k', deviceLabel:'drawn with stylus',
-      strokes: seedStrokes, canvasWidth: 600, canvasHeight: 600,
+      layers: [{ bgColor: null, strokes: seedStrokes }],
+      canvasWidth: 600, canvasHeight: 600,
       thumb: off.toDataURL('image/png'),
       createdAt: new Date(Date.now()-3600*1000*3).toISOString(), likes: 12
     };
@@ -343,5 +545,6 @@ if ('serviceWorker' in navigator) {
   }
 
   renderFeed();
+  renderLayersPanel();
   window.addEventListener('resize', function(){ if(document.getElementById('drawView').classList.contains('active')) fitCanvas(); });
 })();
