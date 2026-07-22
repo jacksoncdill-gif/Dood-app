@@ -2,21 +2,21 @@
 
 A social app where every post has to be made live, inside the app — draw with a finger, stylus, or mouse, no uploads, no AI. Sits somewhere between Vine, Instagram, and DeviantArt: everything on the feed is guaranteed human-made, in real time.
 
-This repo is the **Phase 1 prototype**: draw + replay only, built as a Progressive Web App (PWA) so it runs identically on iOS, Android, and desktop from a single codebase, installable straight from the browser with no app store required.
+This repo is the **Phase 1 prototype**: the core solo creative loop, built as a Progressive Web App (PWA) so it runs identically on iOS, Android, and desktop from a single codebase, installable straight from the browser with no app store required.
 
 ## What works right now
 
-- Draw with your finger, stylus, or mouse on an in-app canvas (brush size, eraser, undo, clear per layer).
-- A full color wheel (tap the round swatch) plus quick-access preset colors.
-- Layers: up to 5, each with its own visibility toggle, reorder (move up/down), and an optional background fill color — so you can have a background separate from your drawing without it getting erased or undone together.
-- Post a drawing to a local feed.
+- Tapping "+ New" asks you to choose **Draw** (one image) or **Animate** (a looping frame sequence) — the two core creative modes.
+- **Draw mode:** finger/stylus/mouse canvas, full color wheel plus quick-access presets, brush size, eraser, undo, clear — with up to 5 layers, each with its own visibility toggle, reorder (move up/down), and an optional background fill color so a background can't be erased or undone along with your drawing.
+- **Animate mode:** up to 12 onion-skin frames. Each new frame starts as a copy of the last one, with the previous frame ghosted faintly behind it while you draw, so it's easy to nudge or tweak rather than redraw from scratch. Includes a preview-loop button to check pacing before posting, and per-frame delete/undo/clear.
+- Post to a local feed. Animated posts loop automatically in the feed like a tiny GIF.
 - Every post is tagged with what it was made on (finger / stylus / mouse), detected automatically.
-- Every post auto-generates a **replay** — a stroke-by-stroke timelapse of how it was drawn across all layers, in true chronological order, reconstructed from the recorded stroke data (not a screen recording).
-- Installable as a home-screen app on iOS (Safari → Share → Add to Home Screen) and Android (Chrome → Add to Home Screen), and works offline once installed thanks to a basic service worker.
+- Every post auto-generates a **replay**: for a drawing, a stroke-by-stroke timelapse across all layers in true chronological order; for an animation, each frame's construction is revealed in sequence before it settles into looping the finished result. Reconstructed from recorded stroke data, not a screen recording.
+- Installable as a home-screen app on iOS (Safari → Share → Add to Home Screen) and Android (Chrome → Add to Home Screen), and works offline once installed thanks to a service worker (network-first, so you always get the latest version when online).
 
 ## What's intentionally not here yet
 
-Per the phased MVP plan (see `docs/Dood_Concept.docx` if included, or the project's concept doc): animation/onion-skin, sound (voice filters, SFX, music maker), a real social graph (follow/like/comment persistence across users), and moderation. This prototype exists to validate the core "draw live, watch it replay" loop before building anything further.
+Per the phased MVP plan (see `docs/Dood_Concept.docx` if included, or the project's concept doc): sound (voice filters, SFX, music maker), a real social graph (follow/like/comment persistence across users), and moderation. This prototype exists to validate the core "make something live, watch it replay" loop before building anything further.
 
 ## Project structure
 
