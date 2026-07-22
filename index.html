@@ -25,13 +25,29 @@
     </div>
     <nav>
       <button id="tabFeed" class="active">Feed</button>
-      <button id="tabDraw">+ Draw</button>
+      <button id="tabNew">+ New</button>
     </nav>
   </header>
 
   <main>
     <section id="feedView" class="view active">
       <div id="feedList"></div>
+    </section>
+
+    <section id="choiceView" class="view">
+      <p class="hint" style="margin-top:0;">What are you making?</p>
+      <div class="choice-grid">
+        <button class="choice-card" id="choiceDraw">
+          <span class="choice-icon">✏️</span>
+          <span class="choice-title">Draw</span>
+          <span class="choice-sub">one image</span>
+        </button>
+        <button class="choice-card" id="choiceAnimate">
+          <span class="choice-icon">🎞️</span>
+          <span class="choice-title">Animate</span>
+          <span class="choice-sub">a few frames, looped</span>
+        </button>
+      </div>
     </section>
 
     <section id="drawView" class="view">
@@ -42,6 +58,7 @@
         <div class="row">
           <div class="swatches" id="swatches"></div>
           <label class="color-wheel-wrap" title="Full color picker">
+            <span class="wheel-visual"></span>
             <input type="color" id="colorWheel" value="#222222">
           </label>
           <div class="spacer"></div>
@@ -69,6 +86,43 @@
         </div>
       </div>
       <p class="hint">Draw with your finger, stylus, or mouse — every post is tagged with what you used.</p>
+    </section>
+
+    <section id="animateView" class="view">
+      <div class="canvas-shell">
+        <canvas id="animateCanvas" width="600" height="600"></canvas>
+      </div>
+
+      <div class="frame-strip" id="frameStrip"></div>
+
+      <div class="toolbar">
+        <div class="row">
+          <div class="swatches" id="swatchesAnim"></div>
+          <label class="color-wheel-wrap" title="Full color picker">
+            <span class="wheel-visual"></span>
+            <input type="color" id="colorWheelAnim" value="#222222">
+          </label>
+          <div class="spacer"></div>
+          <button class="icon-btn" id="eraserBtnAnim" title="Eraser">◌</button>
+          <button class="icon-btn" id="undoBtnAnim" title="Undo">↺</button>
+          <button class="icon-btn" id="clearBtnAnim" title="Clear frame">✕</button>
+          <button class="icon-btn" id="deleteFrameBtn" title="Delete this frame">🗑</button>
+        </div>
+        <div class="row">
+          <span style="font-size:12px;color:var(--muted);">brush</span>
+          <input type="range" class="size-slider" id="sizeSliderAnim" min="2" max="26" value="6">
+        </div>
+        <div class="row">
+          <button class="icon-btn wide" id="onionToggleBtn" title="Onion skin">◐ Onion skin</button>
+          <button class="icon-btn wide" id="previewBtn" title="Preview loop">▶ Preview</button>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="backBtnAnim">Cancel</button>
+          <div class="spacer"></div>
+          <button class="btn primary" id="postBtnAnim">Post</button>
+        </div>
+      </div>
+      <p class="hint">Each frame starts as a copy of the last one — tweak it a little, add a frame, repeat.</p>
     </section>
   </main>
 </div>

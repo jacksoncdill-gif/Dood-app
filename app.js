@@ -9,6 +9,58 @@ if ('serviceWorker' in navigator) {
 (function(){
   var COLORS = ["#222222","#D85A30","#1D9E75","#378ADD","#7F77DD","#EF9F27"];
   var MAX_LAYERS = 5;
+  var MAX_FRAMES = 12;
+  var ANIM_FRAME_MS = 130; // ~7.7fps for preview / feed loop / replay pacing
+
+  /* ================= shared low-level drawing helpers ================= */
+
+  function drawSeg(targetCtx, w, a, b, color, width, eraser){
+    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = width * (w/300);
+    targetCtx.lineCap = 'round';
+    targetCtx.lineJoin = 'round';
+    targetCtx.beginPath();
+    targetCtx.moveTo(a.x, a.y);
+    targetCtx.lineTo(b.x, b.y);
+    targetCtx.stroke();
+    targetCtx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawDot(targetCtx, w, p, color, width, eraser){
+    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
+    targetCtx.fillStyle = color;
+    targetCtx.beginPath();
+    targetCtx.arc(p.x, p.y, (width*(w/300))/2, 0, Math.PI*2);
+    targetCtx.fill();
+    targetCtx.globalCompositeOperation = 'source-over';
+  }
+
+  function replayStrokesOnto(targetCtx, w, strokes){
+    strokes.forEach(function(s){
+      for(var i=1;i<s.points.length;i++){
+        drawSeg(targetCtx, w, s.points[i-1], s.points[i], s.color, s.width, s.eraser);
+      }
+      if(s.points.length===1){
+        drawDot(targetCtx, w, s.points[0], s.color, s.width, s.eraser);
+      }
+    });
+  }
+
+  function pointerTypeLabel(t){
+    if(t==='touch') return 'drawn with finger';
+    if(t==='pen') return 'drawn with stylus';
+    return 'drawn with mouse';
+  }
+
+  function cloneStrokes(strokes){
+    return strokes.map(function(s){
+      return { color:s.color, width:s.width, eraser:s.eraser, pointerType:s.pointerType,
+        points: s.points.map(function(p){ return {x:p.x,y:p.y,t:p.t}; }) };
+    });
+  }
+
+  /* ================= DRAW MODE (layers) ================= */
 
   var canvas = document.getElementById('drawCanvas');
   var ctx = canvas.getContext('2d');
@@ -62,36 +114,13 @@ if ('serviceWorker' in navigator) {
     compositeAll();
   }
 
-  function toLocal(e){
-    var rect = canvas.getBoundingClientRect();
-    var scaleX = canvas.width / rect.width;
-    var scaleY = canvas.height / rect.height;
+  function toLocal(canvasEl, e){
+    var rect = canvasEl.getBoundingClientRect();
+    var scaleX = canvasEl.width / rect.width;
+    var scaleY = canvasEl.height / rect.height;
     return { x:(e.clientX-rect.left)*scaleX, y:(e.clientY-rect.top)*scaleY, t: performance.now() };
   }
 
-  function drawSeg(targetCtx, w, a, b, color, width, eraser){
-    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    targetCtx.strokeStyle = color;
-    targetCtx.lineWidth = width * (w/300);
-    targetCtx.lineCap = 'round';
-    targetCtx.lineJoin = 'round';
-    targetCtx.beginPath();
-    targetCtx.moveTo(a.x, a.y);
-    targetCtx.lineTo(b.x, b.y);
-    targetCtx.stroke();
-    targetCtx.globalCompositeOperation = 'source-over';
-  }
-
-  function drawDot(targetCtx, w, p, color, width, eraser){
-    targetCtx.globalCompositeOperation = eraser ? 'destination-out' : 'source-over';
-    targetCtx.fillStyle = color;
-    targetCtx.beginPath();
-    targetCtx.arc(p.x, p.y, (width*(w/300))/2, 0, Math.PI*2);
-    targetCtx.fill();
-    targetCtx.globalCompositeOperation = 'source-over';
-  }
-
-  // Fully rebuilds one layer's own offscreen bitmap from its stroke history + bg fill.
   function renderLayer(layer){
     var lctx = layer.ctx, w = layer.canvasEl.width, h = layer.canvasEl.height;
     lctx.clearRect(0,0,w,h);
@@ -100,17 +129,9 @@ if ('serviceWorker' in navigator) {
       lctx.fillStyle = layer.bgColor;
       lctx.fillRect(0,0,w,h);
     }
-    layer.strokes.forEach(function(s){
-      for(var i=1;i<s.points.length;i++){
-        drawSeg(lctx, w, s.points[i-1], s.points[i], s.color, s.width, s.eraser);
-      }
-      if(s.points.length===1){
-        drawDot(lctx, w, s.points[0], s.color, s.width, s.eraser);
-      }
-    });
+    replayStrokesOnto(lctx, w, layer.strokes);
   }
 
-  // Cheap: just stacks each layer's already-rendered bitmap onto the main visible canvas.
   function compositeAll(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     layers.forEach(function(layer){
@@ -119,17 +140,11 @@ if ('serviceWorker' in navigator) {
     });
   }
 
-  function pointerTypeLabel(t){
-    if(t==='touch') return 'drawn with finger';
-    if(t==='pen') return 'drawn with stylus';
-    return 'drawn with mouse';
-  }
-
   canvas.addEventListener('pointerdown', function(e){
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     isDrawing = true;
-    var p = toLocal(e);
+    var p = toLocal(canvas, e);
     activeStroke = {
       color: isEraser ? '#ffffff' : currentColor,
       width: parseInt(sizeSlider.value,10),
@@ -141,7 +156,7 @@ if ('serviceWorker' in navigator) {
   canvas.addEventListener('pointermove', function(e){
     if(!isDrawing) return;
     var layer = activeLayer();
-    var p = toLocal(e);
+    var p = toLocal(canvas, e);
     var last = activeStroke.points[activeStroke.points.length-1];
     activeStroke.points.push(p);
     drawSeg(layer.ctx, layer.canvasEl.width, last, p, activeStroke.color, activeStroke.width, activeStroke.eraser);
@@ -162,9 +177,8 @@ if ('serviceWorker' in navigator) {
   canvas.addEventListener('pointercancel', endStroke);
   canvas.addEventListener('pointerleave', function(e){ if(e.buttons===0) endStroke(e); });
 
-  /* ---------- color controls ---------- */
-  function clearSwatchSelection(){
-    Array.prototype.forEach.call(swatchesEl.children, function(el){ el.classList.remove('selected'); });
+  function clearSwatchSelection(container){
+    Array.prototype.forEach.call(container.children, function(el){ el.classList.remove('selected'); });
   }
   COLORS.forEach(function(c, i){
     var b = document.createElement('button');
@@ -173,7 +187,7 @@ if ('serviceWorker' in navigator) {
     b.addEventListener('click', function(){
       currentColor = c; isEraser = false;
       eraserBtn.classList.remove('active');
-      clearSwatchSelection();
+      clearSwatchSelection(swatchesEl);
       b.classList.add('selected');
     });
     swatchesEl.appendChild(b);
@@ -182,7 +196,7 @@ if ('serviceWorker' in navigator) {
     currentColor = colorWheel.value;
     isEraser = false;
     eraserBtn.classList.remove('active');
-    clearSwatchSelection();
+    clearSwatchSelection(swatchesEl);
   });
 
   eraserBtn.addEventListener('click', function(){
@@ -202,14 +216,12 @@ if ('serviceWorker' in navigator) {
     compositeAll();
   });
 
-  /* ---------- layers panel ---------- */
   layersToggleBtn.addEventListener('click', function(){
     layersPanel.classList.toggle('open');
   });
 
   function renderLayersPanel(){
     layersListEl.innerHTML = '';
-    // show topmost layer first in the list (matches visual stacking mental model)
     for(var i=layers.length-1; i>=0; i--){
       (function(i){
         var layer = layers[i];
@@ -325,9 +337,233 @@ if ('serviceWorker' in navigator) {
     renderLayersPanel();
   }
 
-  /* ---------- posts / feed ---------- */
+  /* ================= ANIMATE MODE (onion-skin frames) ================= */
+
+  var animCanvas = document.getElementById('animateCanvas');
+  var actx = animCanvas.getContext('2d');
+  var swatchesAnimEl = document.getElementById('swatchesAnim');
+  var colorWheelAnim = document.getElementById('colorWheelAnim');
+  var sizeSliderAnim = document.getElementById('sizeSliderAnim');
+  var eraserBtnAnim = document.getElementById('eraserBtnAnim');
+  var undoBtnAnim = document.getElementById('undoBtnAnim');
+  var clearBtnAnim = document.getElementById('clearBtnAnim');
+  var deleteFrameBtn = document.getElementById('deleteFrameBtn');
+  var onionToggleBtn = document.getElementById('onionToggleBtn');
+  var previewBtn = document.getElementById('previewBtn');
+  var postBtnAnim = document.getElementById('postBtnAnim');
+  var backBtnAnim = document.getElementById('backBtnAnim');
+  var frameStripEl = document.getElementById('frameStrip');
+
+  var animColor = COLORS[0];
+  var animEraser = false;
+  var animActiveStroke = null;
+  var animIsDrawing = false;
+  var onionEnabled = true;
+  var previewPlaying = false;
+  var previewTimer = null;
+
+  function makeFrame(copyStrokesFrom){
+    var off = document.createElement('canvas');
+    off.width = animCanvas.width; off.height = animCanvas.height;
+    var frame = {
+      strokes: copyStrokesFrom ? cloneStrokes(copyStrokesFrom) : [],
+      canvasEl: off,
+      ctx: off.getContext('2d')
+    };
+    renderFrameBitmap(frame);
+    return frame;
+  }
+
+  var frames = [ makeFrame() ];
+  var activeFrameIndex = 0;
+
+  function activeFrame(){ return frames[activeFrameIndex]; }
+
+  function renderFrameBitmap(frame){
+    var w = frame.canvasEl.width;
+    frame.ctx.clearRect(0,0,w,w);
+    replayStrokesOnto(frame.ctx, w, frame.strokes);
+  }
+
+  function composeAnimCanvas(){
+    actx.clearRect(0,0,animCanvas.width,animCanvas.height);
+    if(onionEnabled && activeFrameIndex > 0){
+      actx.globalAlpha = 0.28;
+      actx.drawImage(frames[activeFrameIndex-1].canvasEl, 0, 0);
+      actx.globalAlpha = 1;
+    }
+    actx.drawImage(activeFrame().canvasEl, 0, 0);
+  }
+
+  function fitAnimCanvas(){
+    var rect = animCanvas.getBoundingClientRect();
+    var w = rect.width * 2, h = rect.height * 2;
+    animCanvas.width = w; animCanvas.height = h;
+    frames.forEach(function(f){
+      f.canvasEl.width = w; f.canvasEl.height = h;
+      renderFrameBitmap(f);
+    });
+    composeAnimCanvas();
+  }
+
+  animCanvas.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    if(previewPlaying){ stopPreview(); }
+    animCanvas.setPointerCapture(e.pointerId);
+    animIsDrawing = true;
+    var p = toLocal(animCanvas, e);
+    animActiveStroke = {
+      color: animEraser ? '#ffffff' : animColor,
+      width: parseInt(sizeSliderAnim.value,10),
+      eraser: animEraser,
+      pointerType: e.pointerType || 'mouse',
+      points: [p]
+    };
+  });
+  animCanvas.addEventListener('pointermove', function(e){
+    if(!animIsDrawing) return;
+    var frame = activeFrame();
+    var p = toLocal(animCanvas, e);
+    var last = animActiveStroke.points[animActiveStroke.points.length-1];
+    animActiveStroke.points.push(p);
+    drawSeg(frame.ctx, frame.canvasEl.width, last, p, animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+    composeAnimCanvas();
+  });
+  function endAnimStroke(){
+    if(!animIsDrawing) return;
+    animIsDrawing = false;
+    var frame = activeFrame();
+    if(animActiveStroke && animActiveStroke.points.length===1){
+      drawDot(frame.ctx, frame.canvasEl.width, animActiveStroke.points[0], animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+      composeAnimCanvas();
+    }
+    if(animActiveStroke) frame.strokes.push(animActiveStroke);
+    animActiveStroke = null;
+    renderFrameStrip();
+  }
+  animCanvas.addEventListener('pointerup', endAnimStroke);
+  animCanvas.addEventListener('pointercancel', endAnimStroke);
+  animCanvas.addEventListener('pointerleave', function(e){ if(e.buttons===0) endAnimStroke(); });
+
+  COLORS.forEach(function(c, i){
+    var b = document.createElement('button');
+    b.className = 'swatch' + (i===0?' selected':'');
+    b.style.background = c;
+    b.addEventListener('click', function(){
+      animColor = c; animEraser = false;
+      eraserBtnAnim.classList.remove('active');
+      clearSwatchSelection(swatchesAnimEl);
+      b.classList.add('selected');
+    });
+    swatchesAnimEl.appendChild(b);
+  });
+  colorWheelAnim.addEventListener('input', function(){
+    animColor = colorWheelAnim.value;
+    animEraser = false;
+    eraserBtnAnim.classList.remove('active');
+    clearSwatchSelection(swatchesAnimEl);
+  });
+
+  eraserBtnAnim.addEventListener('click', function(){
+    animEraser = !animEraser;
+    eraserBtnAnim.classList.toggle('active', animEraser);
+  });
+  undoBtnAnim.addEventListener('click', function(){
+    var frame = activeFrame();
+    frame.strokes.pop();
+    renderFrameBitmap(frame);
+    composeAnimCanvas();
+    renderFrameStrip();
+  });
+  clearBtnAnim.addEventListener('click', function(){
+    var frame = activeFrame();
+    frame.strokes = [];
+    renderFrameBitmap(frame);
+    composeAnimCanvas();
+    renderFrameStrip();
+  });
+  deleteFrameBtn.addEventListener('click', function(){
+    if(frames.length <= 1) return;
+    frames.splice(activeFrameIndex, 1);
+    if(activeFrameIndex >= frames.length) activeFrameIndex = frames.length-1;
+    composeAnimCanvas();
+    renderFrameStrip();
+  });
+  onionToggleBtn.addEventListener('click', function(){
+    onionEnabled = !onionEnabled;
+    onionToggleBtn.classList.toggle('active', onionEnabled);
+    composeAnimCanvas();
+  });
+  onionToggleBtn.classList.add('active');
+
+  function renderFrameStrip(){
+    frameStripEl.innerHTML = '';
+    frames.forEach(function(frame, i){
+      var thumb = document.createElement('div');
+      thumb.className = 'frame-thumb' + (i===activeFrameIndex ? ' active' : '');
+      var img = document.createElement('img');
+      img.src = frame.canvasEl.toDataURL('image/png');
+      var num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = (i+1);
+      thumb.appendChild(img);
+      thumb.appendChild(num);
+      thumb.addEventListener('click', function(){
+        stopPreview();
+        activeFrameIndex = i;
+        composeAnimCanvas();
+        renderFrameStrip();
+      });
+      frameStripEl.appendChild(thumb);
+    });
+    var addBtn = document.createElement('button');
+    addBtn.className = 'frame-add';
+    addBtn.textContent = '+';
+    addBtn.title = 'Add frame (copies the current one)';
+    addBtn.disabled = frames.length >= MAX_FRAMES;
+    addBtn.addEventListener('click', function(){
+      if(frames.length >= MAX_FRAMES) return;
+      var newFrame = makeFrame(activeFrame().strokes);
+      frames.splice(activeFrameIndex+1, 0, newFrame);
+      activeFrameIndex++;
+      composeAnimCanvas();
+      renderFrameStrip();
+    });
+    frameStripEl.appendChild(addBtn);
+  }
+
+  function stopPreview(){
+    if(previewTimer){ clearInterval(previewTimer); previewTimer = null; }
+    previewPlaying = false;
+    previewBtn.textContent = '▶ Preview';
+    composeAnimCanvas();
+  }
+  previewBtn.addEventListener('click', function(){
+    if(previewPlaying){ stopPreview(); return; }
+    if(frames.length < 2) return;
+    previewPlaying = true;
+    previewBtn.textContent = '■ Stop';
+    var i = 0;
+    previewTimer = setInterval(function(){
+      actx.clearRect(0,0,animCanvas.width,animCanvas.height);
+      actx.drawImage(frames[i].canvasEl, 0, 0);
+      i = (i+1) % frames.length;
+    }, ANIM_FRAME_MS);
+  });
+
+  function resetFramesForNewAnimation(){
+    stopPreview();
+    frames = [ makeFrame() ];
+    activeFrameIndex = 0;
+    frames.forEach(function(f){ f.canvasEl.width = animCanvas.width; f.canvasEl.height = animCanvas.height; });
+    composeAnimCanvas();
+    renderFrameStrip();
+  }
+
+  /* ================= posts / feed ================= */
   var posts = [];
   try{ posts = JSON.parse(localStorage.getItem('dood_posts')||'[]'); }catch(e){ posts=[]; }
+  var feedAnimTimers = [];
 
   function relTime(iso){
     var diff = Date.now() - new Date(iso).getTime();
@@ -339,29 +575,46 @@ if ('serviceWorker' in navigator) {
     return Math.floor(h/24)+'d ago';
   }
 
+  function clearFeedAnimTimers(){
+    feedAnimTimers.forEach(function(t){ clearInterval(t); });
+    feedAnimTimers = [];
+  }
+
   function renderFeed(){
+    clearFeedAnimTimers();
     var list = document.getElementById('feedList');
     list.innerHTML = '';
     if(posts.length===0){
-      list.innerHTML = '<div class="empty">No posts yet — tap "+ Draw" and make something.</div>';
+      list.innerHTML = '<div class="empty">No posts yet — tap "+ New" and make something.</div>';
       return;
     }
     posts.forEach(function(post){
       var card = document.createElement('div');
       card.className = 'post';
+      var loopBadge = post.type==='animate' ? '<span class="tag" style="margin-left:6px;background:var(--teal-light);color:var(--teal-dark);">loop</span>' : '';
       card.innerHTML =
         '<div class="post-head">'+
           '<div class="avatar">'+(post.author||'YOU').slice(0,2)+'</div>'+
           '<div class="name">'+(post.authorName||'you')+'</div>'+
-          '<div class="tag">'+post.deviceLabel+'</div>'+
+          '<div class="tag">'+post.deviceLabel+'</div>'+ loopBadge +
         '</div>'+
-        '<div class="thumb-wrap"><img src="'+post.thumb+'" alt="drawing"></div>'+
+        '<div class="thumb-wrap"><img class="thumb-img" src="'+(post.type==='animate' ? post.frameImages[0] : post.thumb)+'" alt="drawing"></div>'+
         '<div class="post-actions">'+
           '<button class="replay-btn" data-id="'+post.id+'">&#9654; Replay</button>'+
           '<span>&#9825; '+post.likes+'</span>'+
           '<span class="time">'+relTime(post.createdAt)+'</span>'+
         '</div>';
       list.appendChild(card);
+
+      if(post.type==='animate' && post.frameImages && post.frameImages.length>1){
+        var imgEl = card.querySelector('.thumb-img');
+        var fi = 0;
+        var timer = setInterval(function(){
+          fi = (fi+1) % post.frameImages.length;
+          imgEl.src = post.frameImages[fi];
+        }, ANIM_FRAME_MS);
+        feedAnimTimers.push(timer);
+      }
     });
     Array.prototype.forEach.call(document.querySelectorAll('.replay-btn'), function(btn){
       btn.addEventListener('click', function(){ openReplay(btn.getAttribute('data-id')); });
@@ -385,6 +638,7 @@ if ('serviceWorker' in navigator) {
     });
     var post = {
       id: 'p'+Date.now(),
+      type: 'draw',
       author: 'ME',
       authorName: 'you',
       deviceLabel: pointerTypeLabel(bestType),
@@ -407,7 +661,44 @@ if ('serviceWorker' in navigator) {
     switchTab('feed');
   });
 
-  /* ---------- replay ---------- */
+  postBtnAnim.addEventListener('click', function(){
+    var hasAnyStroke = frames.some(function(f){ return f.strokes.length>0; });
+    if(!hasAnyStroke){ return; }
+    stopPreview();
+    var majority = {};
+    frames.forEach(function(f){
+      f.strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
+    });
+    var bestType = Object.keys(majority).sort(function(a,b){return majority[b]-majority[a];})[0] || 'mouse';
+    var frameImages = frames.map(function(f){ return f.canvasEl.toDataURL('image/png'); });
+    var frameStrokes = frames.map(function(f){ return { strokes: f.strokes }; });
+    var post = {
+      id: 'p'+Date.now(),
+      type: 'animate',
+      author: 'ME',
+      authorName: 'you',
+      deviceLabel: pointerTypeLabel(bestType),
+      frames: frameStrokes,
+      frameImages: frameImages,
+      canvasWidth: animCanvas.width,
+      canvasHeight: animCanvas.height,
+      thumb: frameImages[0],
+      createdAt: new Date().toISOString(),
+      likes: 0
+    };
+    posts.unshift(post);
+    savePosts();
+    resetFramesForNewAnimation();
+    renderFeed();
+    switchTab('feed');
+  });
+
+  backBtnAnim.addEventListener('click', function(){
+    resetFramesForNewAnimation();
+    switchTab('feed');
+  });
+
+  /* ================= replay ================= */
   var replayModal = document.getElementById('replayModal');
   var replayCanvas = document.getElementById('replayCanvas');
   var replayCtx = replayCanvas.getContext('2d');
@@ -416,7 +707,7 @@ if ('serviceWorker' in navigator) {
   var replayTimers = [];
 
   function clearReplayTimers(){
-    replayTimers.forEach(function(t){ clearTimeout(t); });
+    replayTimers.forEach(function(t){ clearTimeout(t); clearInterval(t); });
     replayTimers = [];
   }
 
@@ -427,17 +718,20 @@ if ('serviceWorker' in navigator) {
     replayCanvas.height = currentReplayPost.canvasHeight || 600;
     replayTag.textContent = currentReplayPost.deviceLabel;
     replayModal.classList.add('open');
-    playReplay();
+    if(currentReplayPost.type==='animate'){
+      playAnimateReplay();
+    } else {
+      playDrawReplay();
+    }
   }
 
-  function playReplay(){
+  function playDrawReplay(){
     clearReplayTimers();
     replayCtx.clearRect(0,0,replayCanvas.width,replayCanvas.height);
 
     var layersSnap = currentReplayPost.layers ||
-      [{ bgColor: null, strokes: currentReplayPost.strokes || [] }]; // backward-compat for old single-layer posts
+      [{ bgColor: null, strokes: currentReplayPost.strokes || [] }]; // backward-compat
 
-    // Prebake every layer's background fill immediately (order = bottom to top).
     layersSnap.forEach(function(l){
       if(l.bgColor){
         replayCtx.globalCompositeOperation = 'source-over';
@@ -446,11 +740,8 @@ if ('serviceWorker' in navigator) {
       }
     });
 
-    // Merge every layer's strokes into one true chronological queue.
     var allStrokes = [];
-    layersSnap.forEach(function(l){
-      l.strokes.forEach(function(s){ allStrokes.push(s); });
-    });
+    layersSnap.forEach(function(l){ l.strokes.forEach(function(s){ allStrokes.push(s); }); });
     allStrokes.sort(function(a,b){
       var ta = a.points[0] ? a.points[0].t : 0;
       var tb = b.points[0] ? b.points[0].t : 0;
@@ -459,7 +750,7 @@ if ('serviceWorker' in navigator) {
 
     var elapsed = 0;
     allStrokes.forEach(function(s, si){
-      elapsed += si===0 ? 0 : 60; // small pause between strokes
+      elapsed += si===0 ? 0 : 60;
       for(var i=1;i<s.points.length;i++){
         var a = s.points[i-1], b = s.points[i];
         var delay = Math.min(Math.max(b.t - a.t, 4), 40);
@@ -481,22 +772,88 @@ if ('serviceWorker' in navigator) {
     });
   }
 
+  // Animate replay: reveal each frame stroke-by-stroke in order (a little construction
+  // montage), then settle into looping the finished frames continuously.
+  function playAnimateReplay(){
+    clearReplayTimers();
+    replayCtx.clearRect(0,0,replayCanvas.width,replayCanvas.height);
+    var w = replayCanvas.width;
+    var frameList = currentReplayPost.frames || [];
+    var elapsed = 0;
+
+    frameList.forEach(function(frame, fi){
+      if(fi > 0){
+        elapsed += 400; // hold the finished frame briefly before wiping to the next
+        (function(when){
+          replayTimers.push(setTimeout(function(){
+            replayCtx.clearRect(0,0,w,replayCanvas.height);
+          }, when));
+        })(elapsed);
+      }
+      var strokes = frame.strokes || [];
+      strokes.forEach(function(s, si){
+        elapsed += si===0 ? 0 : 50;
+        for(var i=1;i<s.points.length;i++){
+          var a = s.points[i-1], b = s.points[i];
+          var delay = Math.min(Math.max(b.t - a.t, 4), 35);
+          elapsed += delay;
+          (function(a,b,color,width,eraser,when){
+            replayTimers.push(setTimeout(function(){
+              drawSeg(replayCtx, w, a, b, color, width, eraser);
+            }, when));
+          })(a,b,s.color,s.width,s.eraser,elapsed);
+        }
+        if(s.points.length===1){
+          elapsed += 25;
+          (function(p,color,width,eraser,when){
+            replayTimers.push(setTimeout(function(){
+              drawDot(replayCtx, w, p, color, width, eraser);
+            }, when));
+          })(s.points[0], s.color, s.width, s.eraser, elapsed);
+        }
+      });
+    });
+
+    // after the construction montage, loop the finished animation continuously
+    elapsed += 500;
+    (function(when){
+      replayTimers.push(setTimeout(function(){
+        if(frameList.length < 2){ return; }
+        var i = 0;
+        var loopTimer = setInterval(function(){
+          replayCtx.clearRect(0,0,w,replayCanvas.height);
+          var strokes = frameList[i].strokes || [];
+          replayStrokesOnto(replayCtx, w, strokes);
+          i = (i+1) % frameList.length;
+        }, ANIM_FRAME_MS);
+        replayTimers.push(loopTimer);
+      }, when));
+    })(elapsed);
+  }
+
   document.getElementById('closeReplay').addEventListener('click', function(){
     clearReplayTimers();
     replayModal.classList.remove('open');
   });
-  document.getElementById('replayAgain').addEventListener('click', playReplay);
+  document.getElementById('replayAgain').addEventListener('click', function(){
+    if(currentReplayPost.type==='animate'){ playAnimateReplay(); } else { playDrawReplay(); }
+  });
 
-  /* ---------- tabs ---------- */
+  /* ================= tabs / navigation ================= */
   function switchTab(name){
-    document.getElementById('feedView').classList.toggle('active', name==='feed');
-    document.getElementById('drawView').classList.toggle('active', name==='draw');
+    var views = { feed:'feedView', choice:'choiceView', draw:'drawView', animate:'animateView' };
+    Object.keys(views).forEach(function(key){
+      document.getElementById(views[key]).classList.toggle('active', key===name);
+    });
     document.getElementById('tabFeed').classList.toggle('active', name==='feed');
-    document.getElementById('tabDraw').classList.toggle('active', name==='draw');
+    document.getElementById('tabNew').classList.toggle('active', name!=='feed');
     if(name==='draw'){ setTimeout(fitCanvas, 0); }
+    if(name==='animate'){ setTimeout(fitAnimCanvas, 0); setTimeout(renderFrameStrip, 0); }
   }
   document.getElementById('tabFeed').addEventListener('click', function(){ switchTab('feed'); });
-  document.getElementById('tabDraw').addEventListener('click', function(){ switchTab('draw'); });
+  document.getElementById('tabNew').addEventListener('click', function(){ switchTab('choice'); });
+  document.getElementById('choiceDraw').addEventListener('click', function(){ switchTab('draw'); });
+  document.getElementById('choiceAnimate').addEventListener('click', function(){ switchTab('animate'); });
 
   /* ---------- seed example post on first run ---------- */
   function buildSeedPost(){
@@ -531,7 +888,7 @@ if ('serviceWorker' in navigator) {
       }
     });
     return {
-      id:'seed1', author:'AK', authorName:'ari.k', deviceLabel:'drawn with stylus',
+      id:'seed1', type:'draw', author:'AK', authorName:'ari.k', deviceLabel:'drawn with stylus',
       layers: [{ bgColor: null, strokes: seedStrokes }],
       canvasWidth: 600, canvasHeight: 600,
       thumb: off.toDataURL('image/png'),
@@ -546,5 +903,9 @@ if ('serviceWorker' in navigator) {
 
   renderFeed();
   renderLayersPanel();
-  window.addEventListener('resize', function(){ if(document.getElementById('drawView').classList.contains('active')) fitCanvas(); });
+  renderFrameStrip();
+  window.addEventListener('resize', function(){
+    if(document.getElementById('drawView').classList.contains('active')) fitCanvas();
+    if(document.getElementById('animateView').classList.contains('active')) fitAnimCanvas();
+  });
 })();
