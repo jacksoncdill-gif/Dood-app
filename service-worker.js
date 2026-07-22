@@ -1,4 +1,4 @@
-var CACHE_NAME = 'dood-cache-v2';
+var CACHE_NAME = 'dood-cache-v3';
 var ASSETS = [
   './',
   './index.html',

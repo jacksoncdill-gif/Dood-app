@@ -431,8 +431,8 @@ if ('serviceWorker' in navigator) {
   function activeFrame(){ return frames[activeFrameIndex]; }
 
   function renderFrameBitmap(frame){
-    var w = frame.canvasEl.width;
-    frame.ctx.clearRect(0,0,w,w);
+    var w = frame.canvasEl.width, h = frame.canvasEl.height;
+    frame.ctx.clearRect(0,0,w,h);
     replayStrokesOnto(frame.ctx, w, frame.strokes);
   }
 

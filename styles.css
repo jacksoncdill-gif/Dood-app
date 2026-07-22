@@ -1,20 +1,20 @@
 :root{
-  /* --- Stage 1 palette --- */
-  --cream:#F5EEDC;
-  --cream-deep:#EAE0C4;
-  --ink:#1C1A17;
+  /* --- Stage 1.5 palette: old-Finder grays + blues --- */
+  --cream:#EAEAEC;
+  --cream-deep:#D6D8DB;
+  --ink:#25272C;
 
-  --tomato:#E8543E; --tomato-dark:#B93A28; --tomato-light:#FBD9D1;
-  --cobalt:#2C5FC4; --cobalt-dark:#1E4494; --cobalt-light:#D7E3FA;
-  --mustard:#F0AC2B; --mustard-dark:#A66E10; --mustard-light:#FBEACB;
-  --mint:#4FBE8E; --mint-dark:#2E9268; --mint-light:#D9F2E7;
-  --lavender:#B7A6E0; --lavender-dark:#8B72C4; --lavender-light:#ECE6F7;
+  --tomato:#46618A; --tomato-dark:#2E4463; --tomato-light:#DCE3EC;
+  --cobalt:#1D5FE0; --cobalt-dark:#123F9E; --cobalt-light:#D6E4FB;
+  --mustard:#C9CCD1; --mustard-dark:#5B6068; --mustard-light:#F0F1F3;
+  --mint:#7FA0C4; --mint-dark:#466382; --mint-light:#E4ECF3;
+  --lavender:#C7D0DC; --lavender-dark:#5C6B7D; --lavender-light:#ECEFF3;
 
   /* legacy names kept so every existing rule below still resolves; values
      now point at the new palette so the whole app re-skins from one place */
   --coral:var(--tomato); --coral-dark:var(--tomato-dark); --coral-light:var(--tomato-light);
   --teal:var(--mint); --teal-dark:var(--mint-dark); --teal-light:var(--mint-light);
-  --muted:#6b6355; --line:#3a352c; --bg:var(--cream); --card:#fffdf7;
+  --muted:#6b7280; --line:#33363c; --bg:var(--cream); --card:#FAFAFB;
 
   --font-display:'Baloo 2', system-ui, sans-serif;
   --font-ui:'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -43,7 +43,9 @@ button, input, .btn, .icon-btn{ font-family:var(--font-ui); }
 /* --- header --- */
 header{display:flex;align-items:center;justify-content:space-between;
   padding:12px 14px;border-bottom:3px solid var(--ink);position:sticky;top:0;
-  background:var(--mustard);z-index:5;}
+  background:var(--mustard);
+  background-image:repeating-linear-gradient(to bottom, rgba(37,39,44,.14) 0, rgba(37,39,44,.14) 2px, transparent 2px, transparent 6px);
+  z-index:5;}
 .logo{display:flex;align-items:center;gap:8px;font-family:var(--font-display);
   font-weight:700;font-size:22px;color:var(--ink);letter-spacing:0.5px;}
 .logo .dots{position:relative;width:22px;height:18px;flex:none;}
@@ -77,7 +79,7 @@ main{padding:16px;}
 .tag{margin-left:auto;font-size:11px;color:var(--mustard-dark);background:var(--mustard-light);
   border:2px solid var(--ink);
   padding:2px 9px;border-radius:20px;font-weight:800;}
-.thumb-wrap{position:relative;border-radius:10px;overflow:hidden;background:#f2efe4;
+.thumb-wrap{position:relative;border-radius:10px;overflow:hidden;background:#EEF0F2;
   border:2px solid var(--ink);
   aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;transform:rotate(-0.6deg);}
 .thumb-wrap img{width:100%;height:100%;object-fit:contain;}
@@ -86,7 +88,7 @@ main{padding:16px;}
   border:2px solid var(--ink);padding:6px 12px;border-radius:20px;font-weight:800;font-size:12px;cursor:pointer;
   box-shadow:var(--shadow-hard-sm);}
 .replay-btn:active{transform:translate(1px,1px);box-shadow:none;}
-.time{margin-left:auto;font-size:11px;color:#9c9384;}
+.time{margin-left:auto;font-size:11px;color:#94989e;}
 
 /* --- draw / animate canvas frame --- */
 .canvas-shell{background:var(--cobalt);border:3px solid var(--ink);border-radius:14px;
