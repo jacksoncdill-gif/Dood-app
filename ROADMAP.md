@@ -6,6 +6,7 @@ A running checklist so we can track what's actually built vs. what's still ahead
 
 - [x] Draw mode: finger/stylus/mouse input, up to 5 layers (visibility, reorder, delete, background color), color wheel + presets, brush size, brush/eraser toggle, undo, clear
 - [x] Animate mode: up to 12 frames, onion skin with Copy (duplicate last frame) or Trace (blank + ghost) modes, add/delete frame, per-frame tools, preview loop
+- [x] Animate mode: up to 3 layers per frame (visibility, reorder, background fill — same model as Draw)
 - [x] Landscape (16:9) canvas everywhere
 - [x] Post to a feed, with a stroke-by-stroke "replay" (not a screen recording) for both draw and animate posts
 - [x] Installable PWA — works offline, deployed to GitHub Pages

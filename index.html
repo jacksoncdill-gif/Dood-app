@@ -187,7 +187,7 @@
           <div class="spacer"></div>
           <button class="icon-btn" id="eraserBtnAnim" title="Eraser">◌</button>
           <button class="icon-btn" id="undoBtnAnim" title="Undo">↺</button>
-          <button class="icon-btn" id="clearBtnAnim" title="Clear frame">✕</button>
+          <button class="icon-btn" id="clearBtnAnim" title="Clear layer">✕</button>
           <button class="icon-btn" id="deleteFrameBtn" title="Delete this frame">🗑</button>
         </div>
         <div class="row">
@@ -195,19 +195,30 @@
           <input type="range" class="size-slider" id="sizeSliderAnim" min="2" max="26" value="6">
         </div>
         <div class="row">
+          <button class="icon-btn wide" id="layersToggleBtnAnim" aria-label="Layers" aria-expanded="false">Layers</button>
+        </div>
+      </div>
+
+      <div class="layers-panel" id="layersPanelAnim">
+        <div class="layers-list" id="layersListAnim"></div>
+        <button class="btn ghost small" id="addLayerBtnAnim">+ Add layer</button>
+      </div>
+
+      <div class="toolbar" style="margin-top:8px;">
+        <div class="row">
           <button class="icon-btn wide" id="onionToggleBtn" title="Onion skin">◐ Onion skin</button>
           <button class="icon-btn wide" id="previewBtn" title="Preview loop">▶ Preview</button>
         </div>
         <div class="row">
           <button class="icon-btn wide" id="newFrameModeBtn" title="Choose what a new frame starts as" aria-pressed="false">+ Copy last frame</button>
         </div>
-        <div class="row">
+        <div class="row" style="margin-top:14px;">
           <button class="btn ghost" id="backBtnAnim">Cancel</button>
           <div class="spacer"></div>
           <button class="btn primary" id="postBtnAnim">Post</button>
         </div>
       </div>
-      <p class="hint" id="animHint">Copy mode: each new frame starts as the last one — tweak it a little, add a frame, repeat.</p>
+      <p class="hint" id="animHint">Copy mode: each new frame starts as the last one — tweak it a little, add a frame, repeat. Each frame supports up to 3 layers.</p>
     </section>
   </main>
 </div>

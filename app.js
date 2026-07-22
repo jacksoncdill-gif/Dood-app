@@ -10,6 +10,7 @@ if ('serviceWorker' in navigator) {
   var COLORS = ["#1C1A17","#E8543E","#4FBE8E","#2C5FC4","#B7A6E0","#F0AC2B"];
   var COLOR_NAMES = ["Ink black","Tomato red","Mint green","Cobalt blue","Lavender purple","Mustard yellow"];
   var MAX_LAYERS = 5;
+  var MAX_LAYERS_ANIM = 3;
   var MAX_FRAMES = 12;
   var ANIM_FRAME_MS = 130; // ~7.7fps for preview / feed loop / replay pacing
 
@@ -406,6 +407,10 @@ if ('serviceWorker' in navigator) {
   var postBtnAnim = document.getElementById('postBtnAnim');
   var backBtnAnim = document.getElementById('backBtnAnim');
   var frameStripEl = document.getElementById('frameStrip');
+  var layersToggleBtnAnim = document.getElementById('layersToggleBtnAnim');
+  var layersPanelAnim = document.getElementById('layersPanelAnim');
+  var layersListAnim = document.getElementById('layersListAnim');
+  var addLayerBtnAnim = document.getElementById('addLayerBtnAnim');
 
   var animColor = COLORS[0];
   var animEraser = false;
@@ -415,16 +420,71 @@ if ('serviceWorker' in navigator) {
   var previewPlaying = false;
   var previewTimer = null;
   var newFrameMode = 'copy'; // 'copy' = duplicate last frame, 'blank' = start empty and trace the onion-skin ghost
+  var animLayerCounter = 0;
 
-  function makeFrame(copyStrokesFrom){
+  function makeAnimLayer(name){
+    animLayerCounter++;
     var off = document.createElement('canvas');
     off.width = animCanvas.width; off.height = animCanvas.height;
-    var frame = {
-      strokes: copyStrokesFrom ? cloneStrokes(copyStrokesFrom) : [],
+    return {
+      id: 'animLayer'+animLayerCounter,
+      name: name || ('Layer ' + animLayerCounter),
+      visible: true,
+      bgColor: null,
+      strokes: [],
       canvasEl: off,
       ctx: off.getContext('2d')
     };
-    renderFrameBitmap(frame);
+  }
+
+  function renderAnimLayer(layer){
+    var lctx = layer.ctx, w = layer.canvasEl.width, h = layer.canvasEl.height;
+    lctx.clearRect(0,0,w,h);
+    if(layer.bgColor){
+      lctx.globalCompositeOperation = 'source-over';
+      lctx.fillStyle = layer.bgColor;
+      lctx.fillRect(0,0,w,h);
+    }
+    replayStrokesOnto(lctx, w, layer.strokes);
+  }
+
+  // Combines a frame's visible layers into its own bitmap — used both for the
+  // onion-skin ghost of the previous frame and for the frame-strip thumbnails.
+  function compositeFrame(frame){
+    var w = frame.canvasEl.width, h = frame.canvasEl.height;
+    frame.ctx.clearRect(0,0,w,h);
+    frame.layers.forEach(function(layer){
+      if(!layer.visible) return;
+      frame.ctx.drawImage(layer.canvasEl, 0, 0);
+    });
+  }
+
+  // copyFromFrame: another frame to base the new one on (layer structure + content).
+  // blankStrokes: when copying, keep each layer's background color but drop its
+  // drawn strokes — used by "Blank (trace)" new-frame mode.
+  function makeFrame(copyFromFrame, blankStrokes){
+    var compositeEl = document.createElement('canvas');
+    compositeEl.width = animCanvas.width; compositeEl.height = animCanvas.height;
+    var layers;
+    if(copyFromFrame){
+      layers = copyFromFrame.layers.map(function(l){
+        var nl = makeAnimLayer(l.name);
+        nl.bgColor = l.bgColor;
+        nl.visible = l.visible;
+        nl.strokes = blankStrokes ? [] : cloneStrokes(l.strokes);
+        renderAnimLayer(nl);
+        return nl;
+      });
+    } else {
+      layers = [ makeAnimLayer('Layer 1') ];
+    }
+    var frame = {
+      layers: layers,
+      activeLayerIndex: 0,
+      canvasEl: compositeEl,
+      ctx: compositeEl.getContext('2d')
+    };
+    compositeFrame(frame);
     return frame;
   }
 
@@ -432,12 +492,7 @@ if ('serviceWorker' in navigator) {
   var activeFrameIndex = 0;
 
   function activeFrame(){ return frames[activeFrameIndex]; }
-
-  function renderFrameBitmap(frame){
-    var w = frame.canvasEl.width, h = frame.canvasEl.height;
-    frame.ctx.clearRect(0,0,w,h);
-    replayStrokesOnto(frame.ctx, w, frame.strokes);
-  }
+  function activeAnimLayer(){ var f = activeFrame(); return f.layers[f.activeLayerIndex]; }
 
   function composeAnimCanvas(){
     actx.clearRect(0,0,animCanvas.width,animCanvas.height);
@@ -455,7 +510,11 @@ if ('serviceWorker' in navigator) {
     animCanvas.width = w; animCanvas.height = h;
     frames.forEach(function(f){
       f.canvasEl.width = w; f.canvasEl.height = h;
-      renderFrameBitmap(f);
+      f.layers.forEach(function(l){
+        l.canvasEl.width = w; l.canvasEl.height = h;
+        renderAnimLayer(l);
+      });
+      compositeFrame(f);
     });
     composeAnimCanvas();
   }
@@ -476,22 +535,24 @@ if ('serviceWorker' in navigator) {
   });
   animCanvas.addEventListener('pointermove', function(e){
     if(!animIsDrawing) return;
-    var frame = activeFrame();
+    var layer = activeAnimLayer();
     var p = toLocal(animCanvas, e);
     var last = animActiveStroke.points[animActiveStroke.points.length-1];
     animActiveStroke.points.push(p);
-    drawSeg(frame.ctx, frame.canvasEl.width, last, p, animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+    drawSeg(layer.ctx, layer.canvasEl.width, last, p, animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+    compositeFrame(activeFrame());
     composeAnimCanvas();
   });
   function endAnimStroke(){
     if(!animIsDrawing) return;
     animIsDrawing = false;
-    var frame = activeFrame();
+    var layer = activeAnimLayer();
     if(animActiveStroke && animActiveStroke.points.length===1){
-      drawDot(frame.ctx, frame.canvasEl.width, animActiveStroke.points[0], animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+      drawDot(layer.ctx, layer.canvasEl.width, animActiveStroke.points[0], animActiveStroke.color, animActiveStroke.width, animActiveStroke.eraser);
+      compositeFrame(activeFrame());
       composeAnimCanvas();
     }
-    if(animActiveStroke) frame.strokes.push(animActiveStroke);
+    if(animActiveStroke) layer.strokes.push(animActiveStroke);
     animActiveStroke = null;
     renderFrameStrip();
   }
@@ -523,16 +584,18 @@ if ('serviceWorker' in navigator) {
     eraserBtnAnim.classList.toggle('active', animEraser);
   });
   undoBtnAnim.addEventListener('click', function(){
-    var frame = activeFrame();
-    frame.strokes.pop();
-    renderFrameBitmap(frame);
+    var layer = activeAnimLayer();
+    layer.strokes.pop();
+    renderAnimLayer(layer);
+    compositeFrame(activeFrame());
     composeAnimCanvas();
     renderFrameStrip();
   });
   clearBtnAnim.addEventListener('click', function(){
-    var frame = activeFrame();
-    frame.strokes = [];
-    renderFrameBitmap(frame);
+    var layer = activeAnimLayer();
+    layer.strokes = [];
+    renderAnimLayer(layer);
+    compositeFrame(activeFrame());
     composeAnimCanvas();
     renderFrameStrip();
   });
@@ -542,6 +605,7 @@ if ('serviceWorker' in navigator) {
     if(activeFrameIndex >= frames.length) activeFrameIndex = frames.length-1;
     composeAnimCanvas();
     renderFrameStrip();
+    renderLayersPanelAnim();
   });
   onionToggleBtn.addEventListener('click', function(){
     onionEnabled = !onionEnabled;
@@ -558,7 +622,7 @@ if ('serviceWorker' in navigator) {
     newFrameModeBtn.textContent = isBlank ? '+ Blank (trace onion skin)' : '+ Copy last frame';
     if(animHintEl){
       animHintEl.textContent = isBlank
-        ? 'Trace mode: each new frame starts blank — the faded onion skin behind it is your last frame to draw over.'
+        ? 'Trace mode: each new frame keeps layer backgrounds but starts blank on top — the faded onion skin behind it is your last frame to draw over.'
         : 'Copy mode: each new frame starts as the last one — tweak it a little, add a frame, repeat.';
     }
     if(isBlank && !onionEnabled){
@@ -566,6 +630,125 @@ if ('serviceWorker' in navigator) {
       onionToggleBtn.classList.add('active');
       composeAnimCanvas();
     }
+  });
+
+  /* ---- per-frame layers panel (up to 3 layers per frame) ---- */
+  layersToggleBtnAnim.addEventListener('click', function(){
+    var isOpen = layersPanelAnim.classList.toggle('open');
+    layersToggleBtnAnim.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+
+  function renderLayersPanelAnim(){
+    var frame = activeFrame();
+    layersListAnim.innerHTML = '';
+    for(var i=frame.layers.length-1; i>=0; i--){
+      (function(i){
+        var layer = frame.layers[i];
+        var row = document.createElement('div');
+        row.className = 'layer-row' + (i===frame.activeLayerIndex ? ' active' : '');
+
+        var eyeBtn = document.createElement('button');
+        eyeBtn.className = 'eye' + (layer.visible ? '' : ' off');
+        eyeBtn.textContent = layer.visible ? '◉' : '○';
+        eyeBtn.title = 'Toggle visibility';
+        eyeBtn.setAttribute('aria-label', (layer.visible ? 'Hide' : 'Show') + ' ' + layer.name);
+        eyeBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          layer.visible = !layer.visible;
+          compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
+        });
+
+        var bgSwatch = document.createElement('label');
+        bgSwatch.className = 'bgswatch';
+        bgSwatch.title = 'Set background color for this layer';
+        bgSwatch.setAttribute('aria-label', 'Set background color for ' + layer.name);
+        bgSwatch.style.background = layer.bgColor ||
+          'linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%)';
+        if(layer.bgColor){ bgSwatch.style.backgroundSize = 'auto'; }
+        var bgInput = document.createElement('input');
+        bgInput.type = 'color';
+        bgInput.value = layer.bgColor || '#ffffff';
+        bgInput.addEventListener('click', function(ev){ ev.stopPropagation(); });
+        bgInput.addEventListener('input', function(){
+          layer.bgColor = bgInput.value;
+          renderAnimLayer(layer);
+          compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
+        });
+        bgSwatch.appendChild(bgInput);
+
+        var nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = layer.name + (layer.bgColor ? ' · bg' : '');
+
+        var upBtn = document.createElement('button');
+        upBtn.textContent = '↑';
+        upBtn.title = 'Move up';
+        upBtn.setAttribute('aria-label', 'Move ' + layer.name + ' up');
+        upBtn.disabled = i === frame.layers.length-1;
+        upBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(i < frame.layers.length-1){
+            var tmp = frame.layers[i]; frame.layers[i] = frame.layers[i+1]; frame.layers[i+1] = tmp;
+            if(frame.activeLayerIndex===i) frame.activeLayerIndex=i+1;
+            else if(frame.activeLayerIndex===i+1) frame.activeLayerIndex=i;
+            compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
+          }
+        });
+
+        var downBtn = document.createElement('button');
+        downBtn.textContent = '↓';
+        downBtn.title = 'Move down';
+        downBtn.setAttribute('aria-label', 'Move ' + layer.name + ' down');
+        downBtn.disabled = i === 0;
+        downBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(i > 0){
+            var tmp = frame.layers[i]; frame.layers[i] = frame.layers[i-1]; frame.layers[i-1] = tmp;
+            if(frame.activeLayerIndex===i) frame.activeLayerIndex=i-1;
+            else if(frame.activeLayerIndex===i-1) frame.activeLayerIndex=i;
+            compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
+          }
+        });
+
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete layer';
+        delBtn.setAttribute('aria-label', 'Delete ' + layer.name);
+        delBtn.disabled = frame.layers.length <= 1;
+        delBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          if(frame.layers.length <= 1) return;
+          frame.layers.splice(i,1);
+          if(frame.activeLayerIndex >= frame.layers.length) frame.activeLayerIndex = frame.layers.length-1;
+          compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
+        });
+
+        row.appendChild(eyeBtn);
+        row.appendChild(bgSwatch);
+        row.appendChild(nameEl);
+        row.appendChild(upBtn);
+        row.appendChild(downBtn);
+        row.appendChild(delBtn);
+
+        row.addEventListener('click', function(){
+          frame.activeLayerIndex = i;
+          renderLayersPanelAnim();
+        });
+
+        layersListAnim.appendChild(row);
+      })(i);
+    }
+    addLayerBtnAnim.disabled = frame.layers.length >= MAX_LAYERS_ANIM;
+    addLayerBtnAnim.textContent = frame.layers.length >= MAX_LAYERS_ANIM ? ('Max ' + MAX_LAYERS_ANIM + ' layers') : '+ Add layer';
+  }
+
+  addLayerBtnAnim.addEventListener('click', function(){
+    var frame = activeFrame();
+    if(frame.layers.length >= MAX_LAYERS_ANIM) return;
+    var newLayer = makeAnimLayer();
+    frame.layers.push(newLayer);
+    frame.activeLayerIndex = frame.layers.length-1;
+    compositeFrame(frame); composeAnimCanvas(); renderFrameStrip(); renderLayersPanelAnim();
   });
 
   function renderFrameStrip(){
@@ -585,6 +768,7 @@ if ('serviceWorker' in navigator) {
         activeFrameIndex = i;
         composeAnimCanvas();
         renderFrameStrip();
+        renderLayersPanelAnim();
       });
       frameStripEl.appendChild(thumb);
     });
@@ -595,11 +779,12 @@ if ('serviceWorker' in navigator) {
     addBtn.disabled = frames.length >= MAX_FRAMES;
     addBtn.addEventListener('click', function(){
       if(frames.length >= MAX_FRAMES) return;
-      var newFrame = newFrameMode === 'blank' ? makeFrame() : makeFrame(activeFrame().strokes);
+      var newFrame = newFrameMode === 'blank' ? makeFrame(activeFrame(), true) : makeFrame(activeFrame(), false);
       frames.splice(activeFrameIndex+1, 0, newFrame);
       activeFrameIndex++;
       composeAnimCanvas();
       renderFrameStrip();
+      renderLayersPanelAnim();
     });
     frameStripEl.appendChild(addBtn);
   }
@@ -627,9 +812,9 @@ if ('serviceWorker' in navigator) {
     stopPreview();
     frames = [ makeFrame() ];
     activeFrameIndex = 0;
-    frames.forEach(function(f){ f.canvasEl.width = animCanvas.width; f.canvasEl.height = animCanvas.height; });
     composeAnimCanvas();
     renderFrameStrip();
+    renderLayersPanelAnim();
   }
 
   /* ================= posts / feed ================= */
@@ -734,23 +919,27 @@ if ('serviceWorker' in navigator) {
   });
 
   postBtnAnim.addEventListener('click', function(){
-    var hasAnyStroke = frames.some(function(f){ return f.strokes.length>0; });
+    var hasAnyStroke = frames.some(function(f){ return f.layers.some(function(l){ return l.strokes.length>0; }); });
     if(!hasAnyStroke){ return; }
     stopPreview();
     var majority = {};
     frames.forEach(function(f){
-      f.strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
+      f.layers.forEach(function(l){
+        l.strokes.forEach(function(s){ majority[s.pointerType] = (majority[s.pointerType]||0)+1; });
+      });
     });
     var bestType = Object.keys(majority).sort(function(a,b){return majority[b]-majority[a];})[0] || 'mouse';
     var frameImages = frames.map(function(f){ return f.canvasEl.toDataURL('image/png'); });
-    var frameStrokes = frames.map(function(f){ return { strokes: f.strokes }; });
+    var frameLayers = frames.map(function(f){
+      return { layers: f.layers.filter(function(l){ return l.visible; }).map(function(l){ return { bgColor: l.bgColor, strokes: l.strokes }; }) };
+    });
     var post = {
       id: 'p'+Date.now(),
       type: 'animate',
       author: 'ME',
       authorName: 'you',
       deviceLabel: pointerTypeLabel(bestType),
-      frames: frameStrokes,
+      frames: frameLayers,
       frameImages: frameImages,
       canvasWidth: animCanvas.width,
       canvasHeight: animCanvas.height,
@@ -846,24 +1035,48 @@ if ('serviceWorker' in navigator) {
 
   // Animate replay: reveal each frame stroke-by-stroke in order (a little construction
   // montage), then settle into looping the finished frames continuously.
+  // Each frame may have multiple layers (new format: {layers:[{bgColor,strokes}]});
+  // older saved posts have a flat {strokes:[...]} per frame — handled as a single layer.
   function playAnimateReplay(){
     clearReplayTimers();
     replayCtx.clearRect(0,0,replayCanvas.width,replayCanvas.height);
-    var w = replayCanvas.width;
+    var w = replayCanvas.width, h = replayCanvas.height;
     var frameList = currentReplayPost.frames || [];
     var elapsed = 0;
+
+    function layersOf(frame){ return frame.layers || [{ bgColor:null, strokes: frame.strokes || [] }]; }
 
     frameList.forEach(function(frame, fi){
       if(fi > 0){
         elapsed += 400; // hold the finished frame briefly before wiping to the next
         (function(when){
           replayTimers.push(setTimeout(function(){
-            replayCtx.clearRect(0,0,w,replayCanvas.height);
+            replayCtx.clearRect(0,0,w,h);
           }, when));
         })(elapsed);
       }
-      var strokes = frame.strokes || [];
-      strokes.forEach(function(s, si){
+      var layersSnap = layersOf(frame);
+      (function(layersSnap, when){
+        replayTimers.push(setTimeout(function(){
+          layersSnap.forEach(function(l){
+            if(l.bgColor){
+              replayCtx.globalCompositeOperation = 'source-over';
+              replayCtx.fillStyle = l.bgColor;
+              replayCtx.fillRect(0,0,w,h);
+            }
+          });
+        }, when));
+      })(layersSnap, elapsed);
+
+      var allStrokes = [];
+      layersSnap.forEach(function(l){ l.strokes.forEach(function(s){ allStrokes.push(s); }); });
+      allStrokes.sort(function(a,b){
+        var ta = a.points[0] ? a.points[0].t : 0;
+        var tb = b.points[0] ? b.points[0].t : 0;
+        return ta - tb;
+      });
+
+      allStrokes.forEach(function(s, si){
         elapsed += si===0 ? 0 : 50;
         for(var i=1;i<s.points.length;i++){
           var a = s.points[i-1], b = s.points[i];
@@ -893,9 +1106,16 @@ if ('serviceWorker' in navigator) {
         if(frameList.length < 2){ return; }
         var i = 0;
         var loopTimer = setInterval(function(){
-          replayCtx.clearRect(0,0,w,replayCanvas.height);
-          var strokes = frameList[i].strokes || [];
-          replayStrokesOnto(replayCtx, w, strokes);
+          replayCtx.clearRect(0,0,w,h);
+          var layersSnap = layersOf(frameList[i]);
+          layersSnap.forEach(function(l){
+            if(l.bgColor){
+              replayCtx.globalCompositeOperation = 'source-over';
+              replayCtx.fillStyle = l.bgColor;
+              replayCtx.fillRect(0,0,w,h);
+            }
+          });
+          layersSnap.forEach(function(l){ replayStrokesOnto(replayCtx, w, l.strokes); });
           i = (i+1) % frameList.length;
         }, ANIM_FRAME_MS);
         replayTimers.push(loopTimer);
@@ -920,7 +1140,7 @@ if ('serviceWorker' in navigator) {
     document.getElementById('tabFeed').classList.toggle('active', name==='feed');
     document.getElementById('tabNew').classList.toggle('active', name!=='feed');
     if(name==='draw'){ setTimeout(fitCanvas, 0); }
-    if(name==='animate'){ setTimeout(fitAnimCanvas, 0); setTimeout(renderFrameStrip, 0); }
+    if(name==='animate'){ setTimeout(fitAnimCanvas, 0); setTimeout(renderFrameStrip, 0); setTimeout(renderLayersPanelAnim, 0); }
   }
   document.getElementById('tabFeed').addEventListener('click', function(){ switchTab('feed'); });
   document.getElementById('tabNew').addEventListener('click', function(){ switchTab('choice'); });
@@ -976,6 +1196,7 @@ if ('serviceWorker' in navigator) {
   renderFeed();
   renderLayersPanel();
   renderFrameStrip();
+  renderLayersPanelAnim();
   window.addEventListener('resize', function(){
     if(document.getElementById('drawView').classList.contains('active')) fitCanvas();
     if(document.getElementById('animateView').classList.contains('active')) fitAnimCanvas();
