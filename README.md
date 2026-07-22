@@ -6,10 +6,12 @@ This repo is the **Phase 1 prototype**: draw + replay only, built as a Progressi
 
 ## What works right now
 
-- Draw with your finger, stylus, or mouse on an in-app canvas (color, brush size, eraser, undo, clear).
+- Draw with your finger, stylus, or mouse on an in-app canvas (brush size, eraser, undo, clear per layer).
+- A full color wheel (tap the round swatch) plus quick-access preset colors.
+- Layers: up to 5, each with its own visibility toggle, reorder (move up/down), and an optional background fill color — so you can have a background separate from your drawing without it getting erased or undone together.
 - Post a drawing to a local feed.
 - Every post is tagged with what it was made on (finger / stylus / mouse), detected automatically.
-- Every post auto-generates a **replay** — a stroke-by-stroke timelapse of how it was drawn, reconstructed from the recorded stroke data (not a screen recording).
+- Every post auto-generates a **replay** — a stroke-by-stroke timelapse of how it was drawn across all layers, in true chronological order, reconstructed from the recorded stroke data (not a screen recording).
 - Installable as a home-screen app on iOS (Safari → Share → Add to Home Screen) and Android (Chrome → Add to Home Screen), and works offline once installed thanks to a basic service worker.
 
 ## What's intentionally not here yet
